@@ -51,8 +51,8 @@ Matrix4x4 MakeViewProjectionMatrix(const Vector3& cameraTranslate, const Vector3
     Matrix4x4 rotX = {};
     rotX.m[0][0] = 1.0f;
     rotX.m[1][1] = cosX;
-    rotX.m[1][2] = sinX;
-    rotX.m[2][1] = -sinX;
+    rotX.m[1][2] = -sinX;
+    rotX.m[2][1] = sinX;
     rotX.m[2][2] = cosX;
     rotX.m[3][3] = 1.0f;
 
@@ -74,7 +74,7 @@ Matrix4x4 MakeViewProjectionMatrix(const Vector3& cameraTranslate, const Vector3
                     r.m[i][j] += a.m[i][k] * b.m[k][j];
         return r;
     };
-    Matrix4x4 rot = Multiply(Multiply(rotY, rotX), rotZ);
+    Matrix4x4 rot = Multiply(Multiply(rotZ, rotX), rotY);
 
     // ビュー行列 = 回転 * 平行移動
     view = rot;
@@ -128,26 +128,6 @@ Vector3 Transform(const Vector3& v, const Matrix4x4& m)
     return { x, y, z };
 }
 
-Vector3 TransformToScreen(const Vector3& v, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix)
-{
-    // ワールド→クリップ
-    float x = v.x * viewProjectionMatrix.m[0][0] + v.y * viewProjectionMatrix.m[1][0] + v.z * viewProjectionMatrix.m[2][0] + viewProjectionMatrix.m[3][0];
-    float y = v.x * viewProjectionMatrix.m[0][1] + v.y * viewProjectionMatrix.m[1][1] + v.z * viewProjectionMatrix.m[2][1] + viewProjectionMatrix.m[3][1];
-    float z = v.x * viewProjectionMatrix.m[0][2] + v.y * viewProjectionMatrix.m[1][2] + v.z * viewProjectionMatrix.m[2][2] + viewProjectionMatrix.m[3][2];
-    float w = v.x * viewProjectionMatrix.m[0][3] + v.y * viewProjectionMatrix.m[1][3] + v.z * viewProjectionMatrix.m[2][3] + viewProjectionMatrix.m[3][3];
-    if (w == 0.0f)
-        w = 1e-6f; // 0割り防止
-    x /= w;
-    y /= w;
-    z /= w; // NDC化
-
-    // NDC→スクリーン
-    float sx = x * viewportMatrix.m[0][0] + viewportMatrix.m[3][0];
-    float sy = y * viewportMatrix.m[1][1] + viewportMatrix.m[3][1];
-    float sz = z * viewportMatrix.m[2][2] + viewportMatrix.m[3][2];
-    return { sx, sy, sz };
-}
-
 /*
 void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix)
 {
@@ -176,19 +156,32 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
     const uint32_t kSubdivision = 10;
     const float kGridEvery = (kGridHalfWidth * 2.0f) / float(kSubdivision);
 
+    // X方向（縦線）
     for (uint32_t xIndex = 0; xIndex <= kSubdivision; ++xIndex) {
         float x = -kGridHalfWidth + xIndex * kGridEvery;
-        Vector3 start = TransformToScreen({ x, 0.0f, -kGridHalfWidth }, viewProjectionMatrix, viewportMatrix);
-        Vector3 end = TransformToScreen({ x, 0.0f, kGridHalfWidth }, viewProjectionMatrix, viewportMatrix);
-        uint32_t color = (fabsf(x) < 0.001f) ? 0x000000FF : 0xAAAAAAFF;
-        Novice::DrawLine((int)start.x, (int)start.y, (int)end.x, (int)end.y, color);
+        Vector3 start = { x, 0.0f, -kGridHalfWidth };
+        Vector3 end = { x, 0.0f, kGridHalfWidth };
+
+        start = Transform(start, viewProjectionMatrix);
+        start = Transform(start, viewportMatrix);
+        end = Transform(end, viewProjectionMatrix);
+        end = Transform(end, viewportMatrix);
+
+        Novice::DrawLine((int)start.x, (int)start.y, (int)end.x, (int)end.y, 0xAAAAAAFF);
     }
+
+    // Z方向（横線）
     for (uint32_t zIndex = 0; zIndex <= kSubdivision; ++zIndex) {
         float z = -kGridHalfWidth + zIndex * kGridEvery;
-        Vector3 start = TransformToScreen({ -kGridHalfWidth, 0.0f, z }, viewProjectionMatrix, viewportMatrix);
-        Vector3 end = TransformToScreen({ kGridHalfWidth, 0.0f, z }, viewProjectionMatrix, viewportMatrix);
-        uint32_t color = (fabsf(z) < 0.001f) ? 0x000000FF : 0xAAAAAAFF;
-        Novice::DrawLine((int)start.x, (int)start.y, (int)end.x, (int)end.y, color);
+        Vector3 start = { -kGridHalfWidth, 0.0f, z };
+        Vector3 end = { kGridHalfWidth, 0.0f, z };
+
+        start = Transform(start, viewProjectionMatrix);
+        start = Transform(start, viewportMatrix);
+        end = Transform(end, viewProjectionMatrix);
+        end = Transform(end, viewportMatrix);
+
+        Novice::DrawLine((int)start.x, (int)start.y, (int)end.x, (int)end.y, 0xAAAAAAFF);
     }
 }
 
