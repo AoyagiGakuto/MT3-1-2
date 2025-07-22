@@ -23,23 +23,31 @@ struct Sphere {
     float radius;
 };
 
+Matrix4x4 Multiply(const Matrix4x4& a, const Matrix4x4& b)
+{
+    Matrix4x4 r {};
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            for (int k = 0; k < 4; ++k) {
+                r.m[i][j] += a.m[i][k] * b.m[k][j];
+            }
+        }
+    }
+    return r;
+}
+
 Matrix4x4 MakeViewProjectionMatrix(const Vector3& cameraTranslate, const Vector3& cameraRotate)
 {
-    // 単位行列で初期化
-    Matrix4x4 view = {};
-    for (int i = 0; i < 4; ++i)
-        view.m[i][i] = 1.0f;
 
-    // 回転行列（Y→X→Zの順で回転）
-    float cosY = cosf(-cameraRotate.y);
-    float sinY = sinf(-cameraRotate.y);
-    float cosX = cosf(-cameraRotate.x);
-    float sinX = sinf(-cameraRotate.x);
-    float cosZ = cosf(-cameraRotate.z);
-    float sinZ = sinf(-cameraRotate.z);
+    // 1. カメラ回転の逆行列を作る
+    float cosY = cosf(cameraRotate.y);
+    float sinY = sinf(cameraRotate.y);
+    float cosX = cosf(cameraRotate.x);
+    float sinX = sinf(cameraRotate.x);
+    float cosZ = cosf(cameraRotate.z);
+    float sinZ = sinf(cameraRotate.z);
 
-    // （Y軸回転）
-    Matrix4x4 rotY = {};
+    Matrix4x4 rotY {};
     rotY.m[0][0] = cosY;
     rotY.m[0][2] = sinY;
     rotY.m[1][1] = 1.0f;
@@ -47,8 +55,7 @@ Matrix4x4 MakeViewProjectionMatrix(const Vector3& cameraTranslate, const Vector3
     rotY.m[2][2] = cosY;
     rotY.m[3][3] = 1.0f;
 
-    // （X軸回転）
-    Matrix4x4 rotX = {};
+    Matrix4x4 rotX {};
     rotX.m[0][0] = 1.0f;
     rotX.m[1][1] = cosX;
     rotX.m[1][2] = -sinX;
@@ -56,8 +63,7 @@ Matrix4x4 MakeViewProjectionMatrix(const Vector3& cameraTranslate, const Vector3
     rotX.m[2][2] = cosX;
     rotX.m[3][3] = 1.0f;
 
-    // （Z軸回転）
-    Matrix4x4 rotZ = {};
+    Matrix4x4 rotZ {};
     rotZ.m[0][0] = cosZ;
     rotZ.m[0][1] = -sinZ;
     rotZ.m[1][0] = sinZ;
@@ -65,45 +71,44 @@ Matrix4x4 MakeViewProjectionMatrix(const Vector3& cameraTranslate, const Vector3
     rotZ.m[2][2] = 1.0f;
     rotZ.m[3][3] = 1.0f;
 
-    // 回転合成（Z→X→Yの順）
-    auto Multiply = [](const Matrix4x4& a, const Matrix4x4& b) {
-        Matrix4x4 r = {};
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                for (int k = 0; k < 4; ++k)
-                    r.m[i][j] += a.m[i][k] * b.m[k][j];
-        return r;
-    };
+    // カメラ回転の逆を合成（Z→X→Y の順）
     Matrix4x4 rot = Multiply(Multiply(rotZ, rotX), rotY);
 
-    // ビュー行列 = 回転 * 平行移動
-    view = rot;
-    view.m[0][3] = -(cameraTranslate.x * view.m[0][0] + cameraTranslate.y * view.m[0][1] + cameraTranslate.z * view.m[0][2]);
-    view.m[1][3] = -(cameraTranslate.x * view.m[1][0] + cameraTranslate.y * view.m[1][1] + cameraTranslate.z * view.m[1][2]);
-    view.m[2][3] = -(cameraTranslate.x * view.m[2][0] + cameraTranslate.y * view.m[2][1] + cameraTranslate.z * view.m[2][2]);
-    view.m[3][3] = 1.0f;
+    // 2. カメラの逆平行移動
+    Matrix4x4 trans {};
+    trans.m[0][0] = 1.0f;
+    trans.m[1][1] = 1.0f;
+    trans.m[2][2] = 1.0f;
+    trans.m[3][3] = 1.0f;
+    trans.m[3][0] = -cameraTranslate.x;
+    trans.m[3][1] = -cameraTranslate.y;
+    trans.m[3][2] = -cameraTranslate.z;
 
-    // プロジェクション行列
-    Matrix4x4 proj = {};
+    // 3. ビュー行列
+    Matrix4x4 view = Multiply(trans, rot);
+
+    // 4. プロジェクション行列（DirectX 左手系）
+    Matrix4x4 proj {};
     float fovY = 60.0f * (M_PI / 180.0f);
     float aspect = 1280.0f / 720.0f;
     float nearZ = 0.1f;
     float farZ = 100.0f;
     float f = 1.0f / tanf(fovY / 2.0f);
+
     proj.m[0][0] = f / aspect;
     proj.m[1][1] = f;
-    proj.m[2][2] = (farZ + nearZ) / (nearZ - farZ);
-    proj.m[2][3] = (2.0f * farZ * nearZ) / (nearZ - farZ);
-    proj.m[3][2] = -1.0f;
+    proj.m[2][2] = farZ / (farZ - nearZ);
+    proj.m[2][3] = (-nearZ * farZ) / (farZ - nearZ);
+    proj.m[3][2] = 1.0f;
     proj.m[3][3] = 0.0f;
 
-    Matrix4x4 viewProj = Multiply(proj, view);
-    return viewProj;
+    return Multiply(view, proj); 
 }
 
+// ビューポート行列
 Matrix4x4 MakeViewportForMatrix(float left, float top, float width, float height, float minDepth, float maxDepth)
 {
-    Matrix4x4 m = {};
+    Matrix4x4 m {};
     m.m[0][0] = width * 0.5f;
     m.m[1][1] = -height * 0.5f;
     m.m[2][2] = (maxDepth - minDepth);
@@ -114,6 +119,7 @@ Matrix4x4 MakeViewportForMatrix(float left, float top, float width, float height
     return m;
 }
 
+// 行優先のTransform（DirectX式）
 Vector3 Transform(const Vector3& v, const Matrix4x4& m)
 {
     float x = v.x * m.m[0][0] + v.y * m.m[1][0] + v.z * m.m[2][0] + m.m[3][0];
@@ -263,8 +269,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     // キー入力結果を受け取る箱
     char keys[256] = { 0 };
     char preKeys[256] = { 0 };
-    Vector3 cameraTranslate { 0.0f, 1.9f, -6.49f };
-    Vector3 cameraRotate { 0.26f, 0.0f, 0.0f };
+    Vector3 cameraTranslate { 0.0f, -4.0f, -20.0f };
+    Vector3 cameraRotate { -0.2f, 0.0f, 0.0f };
     Sphere sphere = { { 0.0f, 0.0f, 0.0f }, 0.5f };
     Matrix4x4 viewportMatrix = MakeViewportForMatrix(
         0.0f, 0.0f, 1280.0f, 720.0f, 0.0f, 1.0f);
